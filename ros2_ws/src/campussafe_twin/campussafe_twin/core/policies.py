@@ -95,7 +95,7 @@ Use only ids that appear in the report."""
 class SLMPolicy:
     name = "slm"
 
-    def __init__(self, model: str = "llama3.2:3b", host: str = "http://localhost:11434", timeout: float = 60.0):
+    def __init__(self, model: str = "llama3.2:3b", host: str = "http://localhost:11434", timeout: float = 240.0):
         self.client = OllamaClient(model, host, timeout)
         self.name = f"slm:{model}"
 
