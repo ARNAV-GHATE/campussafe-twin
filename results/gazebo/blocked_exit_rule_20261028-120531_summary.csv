@@ -1,0 +1,2 @@
+scenario,occupants,evacuated,pct_evacuated,total_evacuation_time_s,mean_evacuation_time_s,exposures,people_exposed,decisions,invalid_actions,invalid_rate_pct,mean_latency_ms,p95_latency_ms,guidance_replan_time_s,sim_time_s,policy
+blocked_exit,32,32,100.0,123.0,60.0,7,7,24,0,0.0,0.0,0.1,,123.0,rule
