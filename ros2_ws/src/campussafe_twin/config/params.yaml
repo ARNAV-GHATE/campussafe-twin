@@ -1,0 +1,26 @@
+# Shared parameters for every CampusSafe node. Launch arguments override
+# scenario / policy / model / seed.
+/**:
+  ros__parameters:
+    # Robot spawn pose in the world; must match <pose> of campus_robot in the SDF.
+    spawn_x: 20.0
+    spawn_y: 0.0
+    spawn_yaw: 0.0
+
+    # scenario_manager
+    scenario: fire_north
+    seed: 0
+    rate_hz: 10.0
+    world_name: campus
+    show_hazards_in_gazebo: true
+
+    # state_builder: how often the decision layer is asked (seconds)
+    decision_period: 5.0
+
+    # decision_node
+    policy: slm
+    model: llama3.2:3b
+    ollama_host: http://localhost:11434
+
+    # metrics_logger
+    output_dir: ""          # empty = ~/campussafe_results
