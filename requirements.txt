@@ -1,0 +1,4 @@
+# Offline mode uses only the Python standard library.
+# Tests:
+pytest>=7
+# ROS 2 mode: rclpy and ros_gz come from the ROS 2 install (apt), not pip.
