@@ -1,6 +1,6 @@
 
 # campussafe-twin
-=======
+======================================================================================================================================================================================================================================
 # CampusSafe Twin
 
 **A Digital Twin and Small Language Model–Enabled Autonomous Humanoid Robotic Assistant for Campus Emergency Response and Resilience at Lamar University**
