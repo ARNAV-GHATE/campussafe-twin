@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # campussafe-twin
 =======
 # CampusSafe Twin
