@@ -1,4 +1,10 @@
 
+## 📘 Project Documentation
+
+For the complete technical documentation, including system architecture, Mermaid block diagrams, functional requirements, benchmarks, and Q&A:
+
+**[View Complete System Design & Architecture](docs/SYSTEM_DESIGN.md)**
+
 # campussafe-twin
 ======================================================================================================================================================================================================================================
 # CampusSafe Twin
