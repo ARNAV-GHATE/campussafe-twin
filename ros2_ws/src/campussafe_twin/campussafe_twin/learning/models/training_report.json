@@ -1,0 +1,23 @@
+{
+  "episodes": 3000,
+  "torch": "2.15.0+cu132",
+  "ticks": 141910,
+  "world_model": {
+    "new_hazard_30s_auroc": 0.8650494235598287,
+    "new_hazard_base_rate": 0.06694011732239531,
+    "one_step_hazard_accuracy": 0.9904885246597738
+  },
+  "ncm_samples": 123878,
+  "monitor": {
+    "tau": 0.00010471383458934724,
+    "z_th": 3.2154538888931326,
+    "H": 3.3821238148212287,
+    "drift": 1.0,
+    "calibration_runs": 150,
+    "legit_new_hazards": 819,
+    "legit_new_hazards_flagged_pct": 2.08,
+    "count_values_flagged_pct": 0.101,
+    "runs_alarming_pct": 1.33
+  },
+  "minutes": 17.6
+}

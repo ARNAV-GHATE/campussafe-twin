@@ -1,0 +1,11 @@
+{
+  "tau": 0.00010471383458934724,
+  "z_th": 3.2154538888931326,
+  "H": 3.3821238148212287,
+  "drift": 1.0,
+  "calibration_runs": 150,
+  "legit_new_hazards": 819,
+  "legit_new_hazards_flagged_pct": 2.08,
+  "count_values_flagged_pct": 0.101,
+  "runs_alarming_pct": 1.33
+}

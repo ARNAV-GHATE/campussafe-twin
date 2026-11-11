@@ -5,8 +5,10 @@ navigate_to  -> plans a route on the building graph (avoiding known hazards)
 guide_to_exit -> sets the guidance exit (people near the robot follow it)
 announce     -> publishes the spoken message
 
-Subscribes: /campussafe/safe_action, /campussafe/state, /odom
-Publishes:  /cmd_vel, /campussafe/guidance, /campussafe/announce
+Subscribes: /campussafe/safe_action (signed), /campussafe/state, /odom
+Publishes:  /cmd_vel, /campussafe/guidance, /campussafe/announce, /campussafe/security
+Parameters: defense - with crypto | full, commands whose HMAC / sequence / age
+            fail verification are dropped (forged command injection)
 
 To move to Nav2 later, replace `_drive()` with a NavigateThroughPoses action
 client that sends the same waypoints.
@@ -22,8 +24,10 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 from campussafe_twin.core.building import lamar_cs_floor
+from campussafe_twin.core.defense import CommandGuard
 
-from .common import T_ANNOUNCE, T_GUIDANCE, T_SAFE, T_STATE, declare_spawn, from_msg, odom_to_world
+from .common import (T_ANNOUNCE, T_GUIDANCE, T_SAFE, T_SECURITY, T_STATE, declare_security, declare_spawn, from_msg,
+                     odom_to_world, to_msg)
 
 MAX_LINEAR = 1.0      # m/s
 MAX_ANGULAR = 1.5     # rad/s
@@ -41,6 +45,9 @@ class RobotController(Node):
         self.node_path: list[str] = []
         self.guidance = ""
         self.hazards: set[str] = set()
+        _, defense = declare_security(self)
+        self.guard = CommandGuard(crypto=defense in ("crypto", "full"))
+        self.sim_t = 0.0
 
         self.create_subscription(String, T_SAFE, self.on_action, 10)
         self.create_subscription(String, T_STATE, self.on_state, 10)
@@ -48,6 +55,7 @@ class RobotController(Node):
         self.cmd = self.create_publisher(Twist, "/cmd_vel", 10)
         self.guid_pub = self.create_publisher(String, T_GUIDANCE, 10)
         self.ann_pub = self.create_publisher(String, T_ANNOUNCE, 10)
+        self.sec_pub = self.create_publisher(String, T_SECURITY, 10)
         self.create_timer(0.1, self._drive)
         self.create_timer(1.0, lambda: self.guid_pub.publish(String(data=self.guidance)))
 
@@ -55,13 +63,26 @@ class RobotController(Node):
         self.pose = odom_to_world(msg, *self.spawn)
 
     def on_state(self, msg):
-        self.hazards = {h["location"] for h in from_msg(msg)["known_hazards"]}
+        st = from_msg(msg)
+        self.sim_t = st["time_s"]
+        self.hazards = {h["location"] for h in st["known_hazards"]}
         if self.goal and any(n in self.hazards for n in self.node_path):
             self.get_logger().warn("Route crosses a new hazard, re-planning")
             self._plan(self.goal)
 
     def on_action(self, msg):
-        a = from_msg(msg)
+        env = from_msg(msg)
+        forged = bool(env.get("_forged"))
+        a = self.guard.accept(env, max(self.sim_t, env.get("ts", 0.0)), forged)
+        if a is None:
+            p = env.get("payload", {})
+            self.get_logger().warn(f"BLOCKED command {p.get('action')} {p.get('target')}: failed authentication")
+            self.sec_pub.publish(to_msg({"t": self.sim_t, "layer": "crypto", "type": "forged_command_blocked",
+                                         "detail": f"{p.get('action')} {p.get('target')}"}))
+            return
+        if forged:
+            self.sec_pub.publish(to_msg({"t": self.sim_t, "layer": "none", "type": "forged_command_executed",
+                                         "detail": f"{a.get('action')} {a.get('target')}"}))
         act, target = a["action"], a.get("target")
         if act == "navigate_to":
             self._plan(target)

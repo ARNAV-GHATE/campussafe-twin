@@ -1,7 +1,7 @@
 """Safety validator: vetoes unsafe or invalid actions and substitutes the rule fallback.
 
 Subscribes: /campussafe/state, /campussafe/proposed_action
-Publishes:  /campussafe/safe_action  (includes valid / reason / fallback fields)
+Publishes:  /campussafe/safe_action  (HMAC-signed envelope; payload includes valid / reason / fallback)
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from std_msgs.msg import String
 from campussafe_twin.core.actions import Action
 from campussafe_twin.core.building import lamar_cs_floor
 from campussafe_twin.core.policies import RulePolicy
+from campussafe_twin.core.security import Signer
 from campussafe_twin.core.validator import validate
 
 from .common import T_PROPOSED, T_SAFE, T_STATE, from_msg, to_msg
@@ -26,6 +27,7 @@ class SafetyValidator(Node):
         self.create_subscription(String, T_STATE, lambda m: setattr(self, "state", from_msg(m)), 10)
         self.create_subscription(String, T_PROPOSED, self.on_proposed, 10)
         self.pub = self.create_publisher(String, T_SAFE, 10)
+        self.signer = Signer()
 
     def on_proposed(self, msg):
         if self.state is None:
@@ -37,10 +39,11 @@ class SafetyValidator(Node):
         if not ok:
             self.get_logger().warn(f"REJECTED {action.action} {action.target}: {reason} "
                                    f"-> fallback {executed.action} {executed.target or ''}")
-        self.pub.publish(to_msg(executed.to_dict() | {
+        payload = executed.to_dict() | {
             "valid": ok, "reason": reason, "fallback": not ok,
             "latency_ms": proposed.get("latency_ms", 0.0), "proposed": action.to_dict(),
-            "state_time_s": self.state["time_s"]}))
+            "state_time_s": self.state["time_s"]}
+        self.pub.publish(to_msg(self.signer.sign(payload, self.state["time_s"])))
 
 
 def main():

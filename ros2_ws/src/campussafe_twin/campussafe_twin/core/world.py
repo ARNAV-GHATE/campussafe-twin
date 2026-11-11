@@ -102,17 +102,20 @@ class World:
 
     # ---- simulation -------------------------------------------------------
     def step(self, dt: float, robot_xy=None, guidance_exit: str | None = None,
-             robot_hazards=(), announce: bool = False) -> None:
+             robot_hazards=(), announce: bool = False, robot_cleared=()) -> None:
+        """robot_hazards: hazards the robot tells people about (verified ones only).
+        robot_cleared: hazard claims the robot disproved; people near it drop them."""
         self.t += dt
         current = self.scenario.hazards_at(self.t)
         self.new_hazards = [n for n in current if self.hazards.get(n) != current[n]]
         self.hazards = current
         robot_hazards = set(robot_hazards)
+        robot_cleared = set(robot_cleared)
         for o in self.occupants:
             if o.status == "evacuated":
                 continue
             self._exposure_check(o)
-            self._robot_influence(o, robot_xy, guidance_exit, robot_hazards, announce)
+            self._robot_influence(o, robot_xy, guidance_exit, robot_hazards, announce, robot_cleared)
             if o.status == "unaware":
                 if self.t >= o.react_at:
                     o.status = "moving"
@@ -135,13 +138,15 @@ class World:
                 o.status = "moving"
                 self._plan(o)
 
-    def _robot_influence(self, o, robot_xy, guidance_exit, robot_hazards, announce) -> None:
+    def _robot_influence(self, o, robot_xy, guidance_exit, robot_hazards, announce, robot_cleared=frozenset()) -> None:
         if robot_xy is None:
             return
         d = math.hypot(o.x - robot_xy[0], o.y - robot_xy[1])
         if guidance_exit and d <= GUIDE_RADIUS:
             learned = robot_hazards - o.known_hazards
-            if not o.guided or o.target_exit != guidance_exit or learned:
+            retracted = (robot_cleared & o.known_hazards) - set(self.hazards)
+            if not o.guided or o.target_exit != guidance_exit or learned or retracted:
+                o.known_hazards -= retracted
                 o.known_hazards |= robot_hazards
                 o.guided = True
                 o.target_exit = guidance_exit

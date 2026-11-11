@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-results/
+/results/
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/

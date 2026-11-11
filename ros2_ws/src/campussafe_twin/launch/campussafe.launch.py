@@ -3,6 +3,10 @@
     ros2 launch campussafe_twin campussafe.launch.py
     ros2 launch campussafe_twin campussafe.launch.py scenario:=blocked_exit policy:=rule
     ros2 launch campussafe_twin campussafe.launch.py policy:=slm model:=qwen3:4b
+
+World model + Next-Concept Modeling planner, under cyberattack, with defenses:
+    ros2 launch campussafe_twin campussafe.launch.py policy:=ncm attack:=false_hazard defense:=full
+    ros2 launch campussafe_twin campussafe.launch.py policy:=rule attack:=command_injection defense:=none
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
@@ -23,7 +27,11 @@ def generate_launch_description():
     args = [
         DeclareLaunchArgument("scenario", default_value="fire_north",
                               description="fire_north | blocked_exit | sensor_loss | multi_hazard"),
-        DeclareLaunchArgument("policy", default_value="slm", description="slm | rule | mock | none"),
+        DeclareLaunchArgument("policy", default_value="slm", description="slm | rule | mock | none | ncm | wm_ncm"),
+        DeclareLaunchArgument("attack", default_value="none",
+                              description="none | false_hazard | hazard_suppression | occupancy_spoof | replay | "
+                                          "command_injection | dos | coordinated"),
+        DeclareLaunchArgument("defense", default_value="none", description="none | crypto | wm | full"),
         DeclareLaunchArgument("model", default_value="llama3.2:3b", description="Ollama model tag"),
         DeclareLaunchArgument("seed", default_value="0"),
     ]
@@ -31,6 +39,8 @@ def generate_launch_description():
         "scenario": LaunchConfiguration("scenario"),
         "policy": LaunchConfiguration("policy"),
         "model": LaunchConfiguration("model"),
+        "attack": LaunchConfiguration("attack"),
+        "defense": LaunchConfiguration("defense"),
         "seed": ParameterValue(LaunchConfiguration("seed"), value_type=int),
         "use_sim_time": True,
     }
@@ -54,6 +64,6 @@ def generate_launch_description():
 
     return LaunchDescription(args + [
         gazebo, bridge,
-        node("scenario_manager"), node("state_builder"), node("decision_node"),
+        node("scenario_manager"), node("attack_injector"), node("state_builder"), node("decision_node"),
         node("safety_validator"), node("robot_controller"), node("metrics_logger"),
     ])
