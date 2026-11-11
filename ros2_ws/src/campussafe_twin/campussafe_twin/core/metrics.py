@@ -27,3 +27,27 @@ def summarize(snapshot: dict, decisions: list[dict], replan_times: list[float]) 
         "guidance_replan_time_s": round(statistics.mean(replan_times), 1) if replan_times else None,
         "sim_time_s": snapshot["t"],
     }
+
+
+def security_metrics(attack, defense: str, gateway, guard, attacker, know, n_verify: int) -> dict:
+    """Detection, false alarms and command-channel outcomes for one run."""
+    first = gateway.first_alarm
+    attacked = attack.name != "none"
+    detected = attacked and first is not None and first >= attack.start
+    fp = [e for e in gateway.alarms if e.get("false_positive")]
+    return {
+        "attack": attack.name,
+        "defense": defense,
+        "detected": int(detected) if attacked else None,
+        "detection_delay_s": round(first - attack.start, 1) if detected else None,
+        "false_alarm": int(bool(fp) or (first is not None and (not attacked or first < attack.start))),
+        "false_quarantines": len(fp),
+        "security_alarms": len(gateway.alarms),
+        "counts_filtered": len(gateway.events) - len(gateway.alarms),
+        "channel_compromised": int(not gateway.channel_trusted),
+        "forged_cmds_sent": attacker.forged_sent,
+        "forged_cmds_executed": guard.executed_forged,
+        "forged_cmds_blocked": guard.blocked,
+        "fake_hazards_cleared": len(know.cleared),
+        "verify_actions": n_verify,
+    }

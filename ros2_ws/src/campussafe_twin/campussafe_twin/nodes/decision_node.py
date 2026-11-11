@@ -2,7 +2,11 @@
 
 Subscribes: /campussafe/state
 Publishes:  /campussafe/proposed_action
-Parameters: policy (slm | rule | mock | none), model, ollama_host
+Parameters: policy (slm | rule | mock | none | ncm | wm_ncm), model, ollama_host
+
+If the state carries a verify_target (the world-model monitor quarantined a
+hazard claim), the robot goes to check it with its own sensors first; the
+policy still runs so learned policies keep their world-model belief current.
 """
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
+from campussafe_twin.core.actions import Action, Decision
 from campussafe_twin.core.policies import make_policy
 from campussafe_twin.core.slm_client import OllamaClient
 
@@ -37,6 +42,9 @@ class DecisionNode(Node):
         state = from_msg(msg)
         # The SLM call blocks this callback; states arrive every few seconds, so that is fine.
         dec = self.policy.decide(state)
+        if state.get("verify_target"):
+            vt = state["verify_target"]
+            dec = Decision(Action("navigate_to", vt["go_to"], f"verify {vt['hazard']}"), dec.latency_ms, dec.raw)
         out = dec.action.to_dict() | {"latency_ms": round(dec.latency_ms, 1), "raw": dec.raw[:500],
                                       "policy": self.policy.name, "state_time_s": state["time_s"]}
         self.pub.publish(to_msg(out))

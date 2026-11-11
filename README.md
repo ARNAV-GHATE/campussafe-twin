@@ -6,11 +6,16 @@
 ![Gazebo Harmonic](https://img.shields.io/badge/Gazebo-Harmonic-orange)
 ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Ollama](https://img.shields.io/badge/SLM-Ollama-black)
+![PyTorch](https://img.shields.io/badge/World%20model%20%2B%20NCM-PyTorch-EE4C2C?logo=pytorch&logoColor=white)
 ![Status](https://img.shields.io/badge/status-research%20prototype-yellow)
 
 CampusSafe Twin is a research framework for studying **safety-constrained robotic assistance during campus emergencies**. It simulates a campus building — rooms, corridors, exits, occupants, fire, smoke and blocked exits — in a Gazebo digital twin, and lets a robot decide how to help using a **small language model (SLM) running locally through Ollama**. Every action the model proposes passes through an independent **safety validator** before it can reach the robot; anything unsafe or hallucinated is replaced by a deterministic rule-based action.
 
+**New (November 2026): World Models + Next-Concept Modeling under cyberattack.** A Dreamer-style **world model** gives the robot a learned belief and 30-second forecast of the building, evaluates candidate plans in imagination, and detects physically implausible sensor data. A **Next-Concept Modeling (NCM)** planner (multiscale residual VQ + next-scale transformer, after arXiv:2610.14162) generates 8-step plans coarse-to-fine in 4 parallel passes. The robot is evaluated in normal operation and under **seven cyberattacks** (spoofed fire, hidden hazards, decoy crowds, replay, command injection, DoS, coordinated), with cryptographic and world-model defenses. → [Section 3](#3-world-models--ncm-under-cyberattack), [design](docs/NCM_WORLD_MODEL.md), [results](docs/RESULTS.md).
+
 > **Research question:** Can a safety-validated, SLM-assisted robot improve simulated campus emergency guidance compared with deterministic and no-robot baselines, while keeping latency and invalid actions measurable?
+>
+> **Extension:** Can a world model and a next-concept planner keep that robot effective, reliable and resilient when its sensor and command channels are under cyberattack?
 
 📘 **Full technical documentation** — architecture, requirements, sequence diagrams, scenario details, benchmarks and Q&A: **[docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md)**
 
@@ -24,6 +29,7 @@ CampusSafe Twin is a research framework for studying **safety-constrained roboti
 - [Project layout](#project-layout)
 - [Quick start: offline mode](#1-quick-start-offline-mode-any-os-python-310)
 - [Full simulation: ROS 2 + Gazebo](#2-full-simulation-ros-2--gazebo-ubuntu-2404)
+- [World models + NCM under cyberattack](#3-world-models--ncm-under-cyberattack)
 - [Emergency scenarios](#emergency-scenarios)
 - [Metrics](#metrics)
 - [Sample results](#sample-results)
@@ -41,7 +47,9 @@ CampusSafe Twin is a research framework for studying **safety-constrained roboti
 - 🏢 **Digital twin** — a Gazebo building world generated from a floor graph, with simulated occupants, hazards and sensor failures.
 - 🧠 **Local SLM decision layer** — models such as `llama3.2:3b`, `qwen3:4b`, `phi4-mini` or `gemma3:4b` served by Ollama; no cloud inference needed.
 - 🛡️ **Safety validator** — the SLM never drives motors. It picks from five fixed actions, and the validator rejects nonexistent rooms, unsafe exits and malformed output, substituting a rule-based action.
-- ⚖️ **Four interchangeable policies** — `slm`, `rule` (baseline), `mock` (deliberately faulty, to test the validator) and `none` (no robot).
+- ⚖️ **Six interchangeable policies** — `slm`, `rule` (baseline), `mock` (deliberately faulty, to test the validator), `none` (no robot), the learned `ncm` (world model + Next-Concept Modeling planner), and the `wm_ncm` ablation.
+- 🌍 **World model** — learned RSSM belief, 30-s hazard forecast, imagination-based plan scoring and attack detection.
+- 🔐 **Cyber-resilience testbed** — 7 attacks on sensor, network and command channels; `crypto`, `wm` and `full` defenses; detection and resilience metrics.
 - 📊 **Automatic metrics** — evacuation rate and time, hazard exposure, invalid-action rate, decision latency and replanning time, written to CSV.
 - 💻 **Two run modes** — a pure-Python offline runner for fast batch experiments on any OS, and a full ROS 2 + Gazebo simulation.
 
@@ -56,6 +64,10 @@ CampusSafe Twin is a research framework for studying **safety-constrained roboti
 | Safety validation with rule-based fallback | ✅ Implemented |
 | ROS 2 motion control of a simulated robot | ✅ Implemented |
 | CSV outcome and decision logging | ✅ Implemented |
+| World model (RSSM): belief, forecasting, imagination, attack detection | ✅ Implemented (pre-trained weights included) |
+| Next-Concept Modeling planner (`ncm`; `wm_ncm` ablation) | ✅ Implemented (pre-trained weights included) |
+| Cyberattacks + HMAC / world-model defenses, offline and in ROS 2 | ✅ Implemented |
+| Docker image (ROS 2 Jazzy + Gazebo Harmonic + PyTorch CPU) | ✅ Provided |
 | Physical humanoid robot | 🔜 Future work |
 | Live campus sensor synchronization | 🔜 Future work |
 
@@ -93,8 +105,12 @@ The **rejection rate is itself a thesis metric** — it measures how often the m
 ```
 campussafe-twin/
 ├── run_offline.py                  # fast experiments, no ROS/Gazebo needed
+├── run_experiments.py              # thesis grid: normal vs attacks vs defenses -> report.md + figures
 ├── requirements.txt
+├── docker/                         # Dockerfile + run.sh (ROS 2 + Gazebo + PyTorch, no manual setup)
 ├── docs/SYSTEM_DESIGN.md           # full system design and architecture
+├── docs/NCM_WORLD_MODEL.md         # world model + NCM + cyberattack design
+├── docs/RESULTS.md                 # measured results (normal operation and attacks)
 ├── results/gazebo/                 # saved per-run decision and summary CSVs
 └── ros2_ws/src/campussafe_twin/    # ROS 2 (ament_python) package
     ├── campussafe_twin/core/       # ROS-independent logic, shared by both modes
@@ -107,14 +123,24 @@ campussafe-twin/
     │   ├── slm_client.py           # Ollama client (stdlib only)
     │   ├── validator.py            # safety checks
     │   ├── actions.py              # the fixed action set
-    │   ├── episode.py              # offline decision loop
-    │   └── metrics.py
-    ├── campussafe_twin/nodes/      # the six ROS 2 nodes
+    │   ├── episode.py              # offline decision loop (with attacks and defenses)
+    │   ├── metrics.py
+    │   ├── attacks.py              # 7 cyberattack models
+    │   ├── security.py             # HMAC + sequence + freshness message authentication
+    │   └── defense.py              # sensor gateway, command guard, quarantine-and-verify
+    ├── campussafe_twin/learning/   # needs PyTorch
+    │   ├── world_model.py          # RSSM world model
+    │   ├── wm_monitor.py           # world-model attack detector (CUSUM)
+    │   ├── ncm.py                  # multiscale residual-VQ plan tokenizer + next-concept generator
+    │   ├── ncm_policy.py           # ncm / wm_ncm policies
+    │   ├── data.py, features.py, train.py
+    │   └── models/                 # pre-trained weights + monitor calibration
+    ├── campussafe_twin/nodes/      # the seven ROS 2 nodes (incl. attack_injector)
     ├── worlds/campus_building.sdf  # GENERATED by tools/generate_world.py
     ├── launch/campussafe.launch.py
     ├── config/params.yaml
     ├── tools/generate_world.py
-    └── test/test_core.py
+    └── test/                       # test_core.py, test_security.py
 ```
 
 ## 1. Quick start: offline mode (any OS, Python 3.10+)
@@ -133,7 +159,9 @@ python run_offline.py --scenario blocked_exit --policy rule -v   # print every d
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--scenario` | `all` | One or more of `fire_north`, `blocked_exit`, `sensor_loss`, `multi_hazard` |
-| `--policy` | `rule` | One or more of `rule`, `slm`, `mock`, `none` |
+| `--policy` | `rule` | One or more of `rule`, `slm`, `mock`, `none`, `ncm`, `wm_ncm` |
+| `--attack` | `none` | One or more attacks (see section 3), or `all` |
+| `--defense` | `none` | One or more of `none`, `crypto`, `wm`, `full` |
 | `--model` | `llama3.2:3b` | Ollama model tag for `--policy slm` |
 | `--host` | `http://localhost:11434` | Ollama server address |
 | `--trials` | `3` | Runs per scenario/policy, each with a different seed |
@@ -180,6 +208,82 @@ ros2 topic echo /campussafe/safe_action     # what the robot decided, and whethe
 ros2 topic echo /campussafe/state --once    # the exact situation report the SLM sees
 ros2 topic echo /campussafe/announce        # public announcements
 ```
+
+## 3. World models + NCM under cyberattack
+
+The thesis extension (requested by Dr. Masud Rana): incorporate **Next-Concept Modeling** and **World Models** into the robot's evacuation-guidance task, and evaluate performance, reliability and resilience in normal operation and under cyberattack. Full design: **[docs/NCM_WORLD_MODEL.md](docs/NCM_WORLD_MODEL.md)**. Measured results: **[docs/RESULTS.md](docs/RESULTS.md)**.
+
+```mermaid
+flowchart LR
+    BMS["building sensors"] -->|"signed feed"| ATK{{"attacker<br/>spoof · hide · replay · DoS"}}
+    ATK --> GW["defense gateway<br/>HMAC · onboard cross-check<br/>world-model plausibility"]
+    OB["onboard sensors"] --> GW
+    GW --> K["robot knowledge"] --> WM["world model<br/>belief + 30 s forecast"]
+    WM --> NCM["NCM planner<br/>8 plans, coarse→fine"]
+    NCM -->|"score in imagination"| WM
+    NCM --> SV["safety validator"] -->|"signed command"| ATK2{{"forged commands"}} --> RC["command guard → robot"]
+```
+
+**Install** (PyTorch CPU is enough; pre-trained models are included, so no training is needed):
+
+```bash
+pip install -r requirements.txt
+```
+
+**Run**
+
+```bash
+# normal operation: rule baseline vs world model + NCM
+python run_offline.py --policy none rule ncm --trials 3
+
+# one attack, no defense vs full defense, printing every decision and security event
+python run_offline.py --policy ncm --scenario fire_north --attack false_hazard --defense none full -v
+
+# the complete thesis experiment grid -> results/experiments/report.md, summary.csv, figures
+python run_experiments.py              # add --quick for a 2-minute smoke test
+
+# in Gazebo
+ros2 launch campussafe_twin campussafe.launch.py policy:=ncm attack:=coordinated defense:=full
+ros2 topic echo /campussafe/security   # live defense events
+```
+
+| Attack | Surface | What happens |
+| --- | --- | --- |
+| `false_hazard` | compromised sensor (valid key) | fake fire reported at the busiest safe exit |
+| `hazard_suppression` | compromised sensor | every new hazard hidden from the feed |
+| `occupancy_spoof` | compromised sensor | decoy crowd far away, empty rooms elsewhere |
+| `replay` | network | old sensor messages replayed, freezing the robot's view |
+| `command_injection` | network | forged *guide to worst exit* / *go to far room* commands |
+| `dos` | network | 95 % of sensor messages dropped |
+| `coordinated` | all | fake exit fire + suppression + command injection |
+
+| Defense | Mechanism |
+| --- | --- |
+| `none` | naive robot |
+| `crypto` | HMAC-SHA256 + sequence numbers + freshness on sensor and command channels |
+| `wm` | onboard cross-check + world-model plausibility (quarantine-and-verify, CUSUM alarm) |
+| `full` | both |
+
+**Headline results** (1,300 episodes, 4 held-out scenarios × 5 seeds; full tables and discussion in [docs/RESULTS.md](docs/RESULTS.md)):
+
+| | rule baseline | world model + NCM (`ncm`) |
+| --- | ---: | ---: |
+| Normal operation: evacuated / mean time / people exposed | 98.0 % / 49.0 s / 4.8 | 98.3 % / 48.2 s / 3.5 |
+| Worst attack, no defense (resilience ratio R) | 0.88 (command injection) | 0.56 (command injection) |
+| Fake exit fire: R without → with world-model defense | 0.89 → 0.95 | 0.84 → 0.88 |
+| Coordinated attack: R without → with full defense | 0.90 → 0.95 | 0.71 → 0.86 |
+| Detection with `full` defense | 100 % for 6 of 7 attacks; hazard suppression 55 % | 100 % for 6 of 7 attacks; hazard suppression 5 % |
+
+Cryptography catches every network attack and none of the compromised-sensor attacks; the world-model monitor is the reverse, so only `full` covers both kinds. Stealthy hazard suppression stays hard to detect, but it also did little damage (R ≥ 0.97). The learned planner matches the hand-written baseline in normal operation (differences within noise), and is more robust to stale data but more fragile to forged commands. Planning *in imagination* (`wm_ncm`) exploited model errors and left people behind, a documented negative result.
+
+**Retraining** (optional, ~20–40 min on a laptop CPU; e.g. after changing the floor plan):
+
+```bash
+cd ros2_ws/src/campussafe_twin
+python3 -m campussafe_twin.learning.train            # --quick for a 2-minute pipeline check
+```
+
+**Docker** (no local ROS install): `docker build -t campussafe -f docker/Dockerfile .` then `./docker/run.sh policy:=ncm attack:=false_hazard defense:=full` (Linux/X11 for the Gazebo window), or headless `docker run --rm -it campussafe python3 run_experiments.py --quick`.
 
 ## Emergency scenarios
 
@@ -233,6 +337,8 @@ ROS 2 defaults live in [`config/params.yaml`](ros2_ws/src/campussafe_twin/config
 | `decision_period` | `5.0` s |
 | `seed` | `0` |
 | `spawn_x`, `spawn_y`, `spawn_yaw` | `20.0`, `0.0`, `0.0` |
+| `attack` | `none` |
+| `defense` | `none` |
 | `output_dir` | `~/campussafe_results` if empty |
 
 ## Modelling assumptions
@@ -261,8 +367,8 @@ Recommended research next steps: paired policy benchmarks with the same scenario
 ## Tests
 
 ```bash
-pip install -r requirements.txt     # just pytest
-python3 -m pytest ros2_ws/src/campussafe_twin/test
+pip install -r requirements.txt
+python3 -m pytest ros2_ws/src/campussafe_twin/test     # learned-model tests are skipped without PyTorch
 ```
 
 ## Limitations and disclaimer
