@@ -1,7 +1,9 @@
 """Runs the emergency scenario: hazards, simulated occupants and sensor failures.
 
 Subscribes: /odom, /campussafe/guidance, /campussafe/state, /campussafe/announce
-Publishes:  /campussafe/world  (JSON snapshot, every tick)
+Publishes:  /campussafe/world     (ground-truth JSON snapshot, every tick; used for the robot's
+                                   onboard sensing and for metrics)
+            /campussafe/bms_feed  (HMAC-signed building-sensor reading, every tick)
 Gazebo:     raises the red hazard marker models when a hazard activates
 """
 from __future__ import annotations
@@ -14,11 +16,14 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from std_msgs.msg import String
 
+from campussafe_twin.core.attacks import bms_reading
 from campussafe_twin.core.building import lamar_cs_floor
 from campussafe_twin.core.scenarios import SCENARIOS
+from campussafe_twin.core.security import Signer
 from campussafe_twin.core.world import World
 
-from .common import T_ANNOUNCE, T_GUIDANCE, T_STATE, T_WORLD, declare_spawn, from_msg, odom_to_world, to_msg
+from .common import (T_ANNOUNCE, T_BMS, T_GUIDANCE, T_STATE, T_WORLD, declare_spawn, from_msg, odom_to_world,
+                     to_msg)
 
 
 class ScenarioManager(Node):
@@ -42,6 +47,7 @@ class ScenarioManager(Node):
         self.robot_xy = None
         self.guidance = None
         self.robot_hazards: list[str] = []
+        self.robot_cleared: list[str] = []
         self.announce = False
         self.last_time = None
         self.finished = False
@@ -51,6 +57,8 @@ class ScenarioManager(Node):
         self.create_subscription(String, T_STATE, self.on_state, 10)
         self.create_subscription(String, T_ANNOUNCE, lambda m: setattr(self, "announce", True), 10)
         self.pub = self.create_publisher(String, T_WORLD, 10)
+        self.bms_pub = self.create_publisher(String, T_BMS, 10)
+        self.signer = Signer()
         self.create_timer(1.0 / self.get_parameter("rate_hz").value, self.tick)
         self.get_logger().info(f"Scenario '{name}': {SCENARIOS[name].description}")
         self._show_markers(list(self.world.hazards))
@@ -60,7 +68,9 @@ class ScenarioManager(Node):
         self.robot_xy = (x, y)
 
     def on_state(self, msg: String):
-        self.robot_hazards = [h["location"] for h in from_msg(msg)["known_hazards"]]
+        st = from_msg(msg)
+        self.robot_hazards = [h["location"] for h in st["known_hazards"] if h.get("verified", True)]
+        self.robot_cleared = st.get("cleared_hazards", [])
 
     def tick(self):
         now = self.get_clock().now().nanoseconds * 1e-9
@@ -71,7 +81,8 @@ class ScenarioManager(Node):
         self.last_time = now
         if dt <= 0 or self.finished:
             return
-        self.world.step(min(dt, 0.5), self.robot_xy, self.guidance, self.robot_hazards, self.announce)
+        self.world.step(min(dt, 0.5), self.robot_xy, self.guidance, self.robot_hazards, self.announce,
+                        self.robot_cleared)
         self.announce = False
         if self.world.new_hazards:
             for n in self.world.new_hazards:
@@ -79,6 +90,7 @@ class ScenarioManager(Node):
             self._show_markers(self.world.new_hazards)
         snap = self.world.snapshot()
         self.pub.publish(to_msg(snap))
+        self.bms_pub.publish(to_msg(self.signer.sign(bms_reading(snap), self.world.t)))
         if snap["done"]:
             self.finished = True
             self.get_logger().info("Scenario finished.")

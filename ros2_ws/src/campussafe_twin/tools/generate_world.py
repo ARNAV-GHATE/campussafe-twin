@@ -15,6 +15,7 @@ sys.path.insert(0, PKG)
 
 from campussafe_twin.core.building import lamar_cs_floor, wall_segments  # noqa: E402
 from campussafe_twin.core.scenarios import SCENARIOS  # noqa: E402
+from campussafe_twin.nav.routes import TEST_ROUTES  # noqa: E402
 
 WALL_T, WALL_H = 0.2, 2.5
 SPAWN = (20.0, 0.0)
@@ -49,7 +50,9 @@ def exit_markers(b) -> str:
 
 def hazard_markers(b) -> str:
     """One hidden marker per possible hazard location; scenario_manager raises it when active."""
-    nodes = sorted({n for s in SCENARIOS.values() for n in s.hazard_nodes})
+    nodes = {n for s in SCENARIOS.values() for n in s.hazard_nodes}
+    nodes |= {e.node for r in TEST_ROUTES.values() for e in r.events}       # Task 2 routes
+    nodes = sorted(nodes)
     out = []
     for n in nodes:
         x, y = b.xy(n)
@@ -59,6 +62,7 @@ def hazard_markers(b) -> str:
         <gravity>false</gravity>
         <inertial><mass>1</mass></inertial>
         <visual name="v"><geometry><cylinder><radius>1.5</radius><length>2.0</length></cylinder></geometry>
+          <visibility_flags>2</visibility_flags>
           <transparency>0.4</transparency>
           <material><ambient>1 0.2 0 1</ambient><diffuse>1 0.2 0 1</diffuse><emissive>0.8 0.1 0 1</emissive></material></visual>
       </link>
@@ -80,6 +84,24 @@ ROBOT = f"""    <!-- Placeholder humanoid: torso + head on a differential-drive 
           <material><ambient>0.1 0.35 0.8 1</ambient><diffuse>0.1 0.35 0.8 1</diffuse></material></visual>
         <visual name="head"><pose>0.02 0 0.88 0 0 0</pose><geometry><sphere><radius>0.12</radius></sphere></geometry>
           <material><ambient>0.9 0.9 0.9 1</ambient><diffuse>0.9 0.9 0.9 1</diffuse></material></visual>
+        <!-- Task 2 LiDAR: 32 beams over 360 deg, 8 m, 10 Hz; same beam angles as nav/sim.py.
+             Mounted above the head so the robot's own visuals never block it. Hazard markers
+             carry visibility flag 0x2, which the LiDAR mask excludes (smoke is not a LiDAR
+             obstacle, matching the offline model). -->
+        <sensor name="lidar" type="gpu_lidar">
+          <pose>0 0 1.1 0 0 0</pose>
+          <topic>scan</topic>
+          <update_rate>10</update_rate>
+          <always_on>1</always_on>
+          <visualize>true</visualize>
+          <lidar>
+            <scan><horizontal><samples>32</samples><resolution>1</resolution>
+              <min_angle>-3.141593</min_angle><max_angle>2.945243</max_angle></horizontal></scan>
+            <range><min>0.12</min><max>8.0</max><resolution>0.01</resolution></range>
+            <noise><type>gaussian</type><mean>0.0</mean><stddev>0.02</stddev></noise>
+            <visibility_mask>4294967293</visibility_mask>
+          </lidar>
+        </sensor>
         <visual name="beacon"><pose>0.02 0 1.03 0 0 0</pose><geometry><cylinder><radius>0.04</radius><length>0.06</length></cylinder></geometry>
           <material><ambient>1 0.6 0 1</ambient><diffuse>1 0.6 0 1</diffuse><emissive>1 0.5 0 1</emissive></material></visual>
       </link>
@@ -134,6 +156,7 @@ def build_sdf() -> str:
     <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors"><render_engine>ogre2</render_engine></plugin>
     <gui fullscreen="0"><camera name="user_camera"><pose>20 -28 30 0 0.85 1.5707</pose></camera></gui>
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows><pose>0 0 30 0 0 0</pose>

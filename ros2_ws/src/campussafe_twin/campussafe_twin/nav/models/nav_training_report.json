@@ -1,0 +1,37 @@
+{
+  "torch": "2.15.0+cu132",
+  "episodes": 1500,
+  "dagger_episodes": 250,
+  "tokenizer": {
+    "token": 0.9998999834060669,
+    "plan": 0.9986000061035156
+  },
+  "planner_samples": 116173,
+  "teacher_episodes": 1500,
+  "dagger": {
+    "rounds": 2,
+    "episodes_per_round": 250
+  },
+  "monitor": {
+    "scan": {
+      "k": 2.0548362612724294,
+      "H": 11.39115041452645,
+      "clean_runs_over_H": 0.005,
+      "calibration_runs": 200
+    },
+    "odom": {
+      "k": 4.504236221313472,
+      "H": 41.64977048993113,
+      "clean_runs_over_H": 0.0,
+      "calibration_runs": 200
+    },
+    "cmd": {
+      "k": 6.329821729660019,
+      "H": 71.54556699371354,
+      "clean_runs_over_H": 0.0,
+      "calibration_runs": 200
+    }
+  },
+  "minutes": 44.6,
+  "monitor_note": "k = 95th percentile of clean per-step surprise, H = max(1.5 x 99th percentile of clean CUSUM peaks, 2k); 200 attack-free random routes (seeds 900000-900199)"
+}

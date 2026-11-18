@@ -43,9 +43,10 @@ def build_state(building: Building, know: RobotKnowledge, robot_node: str,
         "guiding_to_exit": guidance_exit,
         "guidance_status": guidance_status,
         "building_sensors": "online" if know.sensors_online else "OFFLINE",
-        "known_hazards": [{"location": n, "type": k, "reported": n in know.reported}
+        "known_hazards": [{"location": n, "type": k, "reported": n in know.reported,
+                           "verified": n not in know.unverified}
                           for n, k in sorted(know.hazards.items())],
         "exits": exits,
         "areas_with_people": areas,
         "allowed_actions": list(ACTIONS),
-    }
+    } | ({"cleared_hazards": sorted(know.cleared)} if know.cleared else {})

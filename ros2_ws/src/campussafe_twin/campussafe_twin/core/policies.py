@@ -5,6 +5,9 @@
   mock  - rule policy that makes deliberate mistakes; tests the validator
           without needing a GPU or Ollama
   none  - robot does nothing; measures what happens with no robot at all
+  ncm     - world model + Next-Concept Modeling planner (needs PyTorch). The proposed method.
+  wm_ncm  - ablation: 8 candidate plans scored in world-model imagination. Exploits model
+            errors and strands people; see docs/RESULTS.md (needs PyTorch)
 """
 from __future__ import annotations
 
@@ -26,9 +29,9 @@ class RulePolicy:
 
     @staticmethod
     def _decide(s: dict) -> Action:
-        # 1. Report anything not yet reported.
+        # 1. Report anything not yet reported (unverified claims are checked first).
         for h in s["known_hazards"]:
-            if not h["reported"]:
+            if not h["reported"] and h.get("verified", True):
                 return Action("report_hazard", h["location"])
         safe_exits = [e for e in s["exits"] if e["status"] == "safe" and e["distance_m"] is not None]
         # 2. Pick the area with the most people (unknown counts as 1), then the nearest.
@@ -85,7 +88,7 @@ Actions:
 
 Rules, in priority order:
 1. Never guide people to, or move into, a location listed in known_hazards or an exit whose status is not "safe".
-2. Report every hazard whose "reported" is false.
+2. Report every hazard whose "reported" is false and "verified" is true.
 3. Make sure guiding_to_exit is the nearest_safe_exit of the area you are heading to; change it if guidance_status is "unsafe".
 4. Go to the area with the most people (treat "unknown" as possibly occupied), preferring closer areas on ties.
 5. When you are at that area, use "wait" so people can follow your guidance.
@@ -114,4 +117,7 @@ def make_policy(name: str, model: str = "llama3.2:3b", host: str = "http://local
         return MockSLMPolicy(seed=seed)
     if name == "slm":
         return SLMPolicy(model, host)
-    raise ValueError(f"unknown policy '{name}' (use rule | slm | mock | none)")
+    if name in ("ncm", "wm_ncm"):
+        from ..learning.ncm_policy import NCMPolicy   # lazy: PyTorch only needed for these
+        return NCMPolicy(select=(name == "wm_ncm"), seed=seed)
+    raise ValueError(f"unknown policy '{name}' (use rule | slm | mock | none | ncm | wm_ncm)")

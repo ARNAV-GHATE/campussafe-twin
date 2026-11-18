@@ -13,6 +13,18 @@ T_PROPOSED = "/campussafe/proposed_action"  # raw policy output (decision_node)
 T_SAFE = "/campussafe/safe_action"       # validated action (safety_validator)
 T_GUIDANCE = "/campussafe/guidance"      # exit the robot is guiding to (robot_controller)
 T_ANNOUNCE = "/campussafe/announce"      # spoken announcements (robot_controller)
+T_BMS = "/campussafe/bms_feed"           # signed building-sensor feed (scenario_manager)
+T_BMS_RX = "/campussafe/bms_feed_rx"     # the same feed after the (possibly attacked) network
+T_SECURITY = "/campussafe/security"      # security events (state_builder, robot_controller)
+
+# Task 2 (hazard-aware navigation under attack); see nodes/nav_*.py
+T_NAV_ODOM = "/campussafe/nav/odom_rx"       # signed pose envelopes as the robot receives them
+T_NAV_SCAN = "/campussafe/nav/scan_rx"       # signed LiDAR envelopes as the robot receives them
+T_NAV_ONBOARD = "/campussafe/nav/onboard"    # trusted onboard sensors: wheel encoders + thermal
+T_NAV_HAZARDS = "/campussafe/nav/hazards"    # active hazards (building feed)
+T_NAV_CMD = "/campussafe/nav/cmd"            # signed velocity commands from nav_controller
+T_NAV_CMD_RX = "/campussafe/nav/cmd_rx"      # the same after the (possibly attacked) network
+T_NAV_STATUS = "/campussafe/nav/status"      # controller status (goal, alarms, estimate) for metrics
 
 
 def to_msg(data: dict) -> String:
@@ -39,3 +51,10 @@ def declare_spawn(node) -> tuple[float, float, float]:
     node.declare_parameter("spawn_yaw", 0.0)
     return (node.get_parameter("spawn_x").value, node.get_parameter("spawn_y").value,
             node.get_parameter("spawn_yaw").value)
+
+
+def declare_security(node) -> tuple[str, str]:
+    """attack / defense parameters shared by several nodes."""
+    node.declare_parameter("attack", "none")
+    node.declare_parameter("defense", "none")
+    return node.get_parameter("attack").value, node.get_parameter("defense").value

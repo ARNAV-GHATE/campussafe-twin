@@ -17,8 +17,13 @@
     # state_builder: how often the decision layer is asked (seconds)
     decision_period: 5.0
 
+    # cyberattack experiments (attack_injector, state_builder, robot_controller, metrics_logger)
+    attack: none            # none | false_hazard | hazard_suppression | occupancy_spoof | replay |
+                            # command_injection | dos | coordinated
+    defense: none           # none | crypto | wm | full
+
     # decision_node
-    policy: slm
+    policy: slm             # slm | rule | mock | none | ncm | wm_ncm
     model: llama3.2:3b
     ollama_host: http://localhost:11434
 

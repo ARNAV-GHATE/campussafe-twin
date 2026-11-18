@@ -8,6 +8,8 @@
 
 > Implementation status matters: the present code includes a ROS 2/Gazebo digital twin, simulated occupants/hazards, a simulated mobile robot, a local Ollama SLM policy, rule-based fallback, safety validation, and CSV metrics. It is **not** yet a physical humanoid robot or a live sensor-synchronized campus digital twin.
 
+> **Extension (November 2026):** World Models, Next-Concept Modeling and cyberattack resilience are documented separately in [NCM_WORLD_MODEL.md](NCM_WORLD_MODEL.md) (design) and [RESULTS.md](RESULTS.md) (measured results). The ROS 2 graph now has a seventh node, `attack_injector`, and the sensor feed and action channel are HMAC-signed.
+
 ## 1. Abstract summary
 
 CampusSafe Twin is a research framework for studying safety-constrained robotic assistance during campus emergencies. It simulates a building with rooms, corridors, exits, occupants, hazards, and an autonomous robot using Gazebo and ROS 2. A locally hosted Small Language Model (SLM) processes structured situation reports and proposes limited actions such as navigating to a location, guiding occupants to an exit, reporting hazards, announcing instructions, or waiting. A separate safety validator checks proposed actions against the known building graph and environmental state before they reach the robot controller, substituting a deterministic rule-based action if necessary.
