@@ -11,11 +11,13 @@
 
 CampusSafe Twin is a research framework for studying **safety-constrained robotic assistance during campus emergencies**. It simulates a campus building — rooms, corridors, exits, occupants, fire, smoke and blocked exits — in a Gazebo digital twin, and lets a robot decide how to help using a **small language model (SLM) running locally through Ollama**. Every action the model proposes passes through an independent **safety validator** before it can reach the robot; anything unsafe or hallucinated is replaced by a deterministic rule-based action.
 
-**New (November 2026): World Models + Next-Concept Modeling under cyberattack.** A Dreamer-style **world model** gives the robot a learned belief and 30-second forecast of the building, evaluates candidate plans in imagination, and detects physically implausible sensor data. A **Next-Concept Modeling (NCM)** planner (multiscale residual VQ + next-scale transformer, after arXiv:2610.14162) generates 8-step plans coarse-to-fine in 4 parallel passes. The robot is evaluated in normal operation and under **seven cyberattacks** (spoofed fire, hidden hazards, decoy crowds, replay, command injection, DoS, coordinated), with cryptographic and world-model defenses. → [Section 3](#3-world-models--ncm-under-cyberattack), [design](docs/NCM_WORLD_MODEL.md), [results](docs/RESULTS.md).
+**New (November 2026): World Models + Next-Concept Modeling under cyberattack.** A Dreamer-style **world model** gives the robot a learned belief and 30-second forecast of the building, evaluates candidate plans in imagination, and detects physically implausible sensor data. A **Next-Concept Modeling (NCM)** planner (multiscale residual VQ + next-scale transformer, after arXiv:2610.14162) generates 8-step plans coarse-to-fine in 4 parallel passes. The robot is evaluated in normal operation and under **seven cyberattacks** (spoofed fire, hidden hazards, decoy crowds, replay, command injection, DoS, coordinated), with cryptographic and world-model defenses. → [Section 3](#3-task-1-world-models--ncm-under-cyberattack-evacuation-guidance), [design](docs/NCM_WORLD_MODEL.md), [results](docs/RESULTS.md).
+
+**New (November 18, 2026): Task 2, hazard-aware navigation.** The same two techniques now also drive the robot's *body*: a world model of the robot's own dynamics and sensors (32-beam LiDAR, odometry, wheel encoders) and an NCM motion planner that generates 3.2-s velocity plans coarse-to-fine in 5 parallel passes, with the world model vetoing plans it imagines will hit a wall. It is attacked on its own `/odom`, `/scan` and `/cmd_vel` channels (pose spoofing, phantom obstacles, forged velocity commands, replay, DoS) and runs in Gazebo with a new LiDAR on the robot. → [Section 4](#4-task-2-hazard-aware-navigation-under-cyberattack), [design](docs/TASK2_NAVIGATION.md), [results](docs/results/nav/report.md).
 
 > **Research question:** Can a safety-validated, SLM-assisted robot improve simulated campus emergency guidance compared with deterministic and no-robot baselines, while keeping latency and invalid actions measurable?
 >
-> **Extension:** Can a world model and a next-concept planner keep that robot effective, reliable and resilient when its sensor and command channels are under cyberattack?
+> **Extension:** Can a world model and a next-concept planner keep that robot effective, reliable and resilient when its sensor and command channels are under cyberattack? Studied on two robotic tasks: evacuation guidance (Task 1, decisions) and hazard-aware navigation (Task 2, motion).
 
 📘 **Full technical documentation** — architecture, requirements, sequence diagrams, scenario details, benchmarks and Q&A: **[docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md)**
 
@@ -29,7 +31,8 @@ CampusSafe Twin is a research framework for studying **safety-constrained roboti
 - [Project layout](#project-layout)
 - [Quick start: offline mode](#1-quick-start-offline-mode-any-os-python-310)
 - [Full simulation: ROS 2 + Gazebo](#2-full-simulation-ros-2--gazebo-ubuntu-2404)
-- [World models + NCM under cyberattack](#3-world-models--ncm-under-cyberattack)
+- [Task 1: world models + NCM under cyberattack (evacuation guidance)](#3-task-1-world-models--ncm-under-cyberattack-evacuation-guidance)
+- [Task 2: hazard-aware navigation under cyberattack](#4-task-2-hazard-aware-navigation-under-cyberattack)
 - [Emergency scenarios](#emergency-scenarios)
 - [Metrics](#metrics)
 - [Sample results](#sample-results)
@@ -50,6 +53,7 @@ CampusSafe Twin is a research framework for studying **safety-constrained roboti
 - ⚖️ **Six interchangeable policies** — `slm`, `rule` (baseline), `mock` (deliberately faulty, to test the validator), `none` (no robot), the learned `ncm` (world model + Next-Concept Modeling planner), and the `wm_ncm` ablation.
 - 🌍 **World model** — learned RSSM belief, 30-s hazard forecast, imagination-based plan scoring and attack detection.
 - 🔐 **Cyber-resilience testbed** — 7 attacks on sensor, network and command channels; `crypto`, `wm` and `full` defenses; detection and resilience metrics.
+- 🦾 **Task 2: navigation** — LiDAR robot, NavRSSM world model + NCM motion planner (`ncm_wm`), 6 attacks on `/odom`, `/scan`, `/cmd_vel`, dead-reckoning rollback and digital-twin LiDAR recovery, motor interlock; offline grid and Gazebo launch.
 - 📊 **Automatic metrics** — evacuation rate and time, hazard exposure, invalid-action rate, decision latency and replanning time, written to CSV.
 - 💻 **Two run modes** — a pure-Python offline runner for fast batch experiments on any OS, and a full ROS 2 + Gazebo simulation.
 
@@ -67,6 +71,8 @@ CampusSafe Twin is a research framework for studying **safety-constrained roboti
 | World model (RSSM): belief, forecasting, imagination, attack detection | ✅ Implemented (pre-trained weights included) |
 | Next-Concept Modeling planner (`ncm`; `wm_ncm` ablation) | ✅ Implemented (pre-trained weights included) |
 | Cyberattacks + HMAC / world-model defenses, offline and in ROS 2 | ✅ Implemented |
+| Task 2: LiDAR robot, navigation world model + NCM motion planner, robot-channel attacks and defenses | ✅ Implemented (pre-trained weights included) |
+| Task 2 in Gazebo (`nav_task.launch.py`, 4 nodes) | ✅ Implemented; nodes verified closed-loop on a ROS stub (`test/test_nav.py`) |
 | Docker image (ROS 2 Jazzy + Gazebo Harmonic + PyTorch CPU) | ✅ Provided |
 | Physical humanoid robot | 🔜 Future work |
 | Live campus sensor synchronization | 🔜 Future work |
@@ -105,12 +111,15 @@ The **rejection rate is itself a thesis metric** — it measures how often the m
 ```
 campussafe-twin/
 ├── run_offline.py                  # fast experiments, no ROS/Gazebo needed
-├── run_experiments.py              # thesis grid: normal vs attacks vs defenses -> report.md + figures
+├── run_experiments.py              # Task 1 grid: normal vs attacks vs defenses -> report.md + figures
+├── run_nav_experiments.py          # Task 2 grid -> docs/results/nav/report.md + figures
 ├── requirements.txt
 ├── docker/                         # Dockerfile + run.sh (ROS 2 + Gazebo + PyTorch, no manual setup)
 ├── docs/SYSTEM_DESIGN.md           # full system design and architecture
 ├── docs/NCM_WORLD_MODEL.md         # world model + NCM + cyberattack design
-├── docs/RESULTS.md                 # measured results (normal operation and attacks)
+├── docs/TASK2_NAVIGATION.md        # Task 2 design: navigation world model + NCM motion planner
+├── docs/RESULTS.md                 # measured results, Task 1 and Task 2
+├── docs/PROGRESS_UPDATE_2026-11-18.md  # what changed in response to the Nov 11 advising email
 ├── results/gazebo/                 # saved per-run decision and summary CSVs
 └── ros2_ws/src/campussafe_twin/    # ROS 2 (ament_python) package
     ├── campussafe_twin/core/       # ROS-independent logic, shared by both modes
@@ -135,12 +144,22 @@ campussafe-twin/
     │   ├── ncm_policy.py           # ncm / wm_ncm policies
     │   ├── data.py, features.py, train.py
     │   └── models/                 # pre-trained weights + monitor calibration
-    ├── campussafe_twin/nodes/      # the seven ROS 2 nodes (incl. attack_injector)
+    ├── campussafe_twin/nav/        # Task 2 (numpy; learned.py/train.py need PyTorch)
+    │   ├── sim.py                  # offline twin of the Gazebo robot: LiDAR, diff drive, hazards
+    │   ├── routes.py               # 8 held-out test routes + random training routes
+    │   ├── controllers.py          # waypoint path, classical controller, observation, motion tokens
+    │   ├── attacks.py, defense.py  # robot-channel attacks; crypto + world-model gateway, motor driver
+    │   ├── episode.py              # one run under attack / defense
+    │   ├── learned.py              # NavRSSM world model, CUSUM monitor, NCM / NCM+WM policies
+    │   ├── data.py, train.py       # teacher + DAgger data, training, monitor calibration
+    │   └── models/                 # pre-trained Task 2 weights + calibration
+    ├── campussafe_twin/nodes/      # 7 Task 1 nodes + 4 Task 2 nodes (nav_*)
     ├── worlds/campus_building.sdf  # GENERATED by tools/generate_world.py
-    ├── launch/campussafe.launch.py
+    ├── launch/campussafe.launch.py # Task 1
+    ├── launch/nav_task.launch.py   # Task 2
     ├── config/params.yaml
     ├── tools/generate_world.py
-    └── test/                       # test_core.py, test_security.py
+    └── test/                       # test_core.py, test_security.py, test_nav.py, ros_stub.py
 ```
 
 ## 1. Quick start: offline mode (any OS, Python 3.10+)
@@ -209,7 +228,7 @@ ros2 topic echo /campussafe/state --once    # the exact situation report the SLM
 ros2 topic echo /campussafe/announce        # public announcements
 ```
 
-## 3. World models + NCM under cyberattack
+## 3. Task 1: World models + NCM under cyberattack (evacuation guidance)
 
 The thesis extension (requested by Dr. Masud Rana): incorporate **Next-Concept Modeling** and **World Models** into the robot's evacuation-guidance task, and evaluate performance, reliability and resilience in normal operation and under cyberattack. Full design: **[docs/NCM_WORLD_MODEL.md](docs/NCM_WORLD_MODEL.md)**. Measured results: **[docs/RESULTS.md](docs/RESULTS.md)**.
 
@@ -284,6 +303,49 @@ python3 -m campussafe_twin.learning.train            # --quick for a 2-minute pi
 ```
 
 **Docker** (no local ROS install): `docker build -t campussafe -f docker/Dockerfile .` then `./docker/run.sh policy:=ncm attack:=false_hazard defense:=full` (Linux/X11 for the Gazebo window), or headless `docker run --rm -it campussafe python3 run_experiments.py --quick`.
+
+## 4. Task 2: hazard-aware navigation under cyberattack
+
+The second robotic task takes the world model and NCM down to the robot's **body**: a LiDAR robot drives
+through the building to a room or the nearest safe exit, re-planning around fire and smoke, while an
+attacker targets its `/odom`, `/scan` and `/cmd_vel` channels. Design: [docs/TASK2_NAVIGATION.md](docs/TASK2_NAVIGATION.md).
+
+| Policy | What it is |
+| --- | --- |
+| `classical` | pure pursuit + LiDAR / thermal reflexes (baseline, also the teacher) |
+| `ncm` | NCM motion planner: 16 motion tokens (3.2 s) generated coarse-to-fine in 5 parallel passes |
+| `ncm_wm` | **proposed**: NCM conditioned on a NavRSSM world-model belief, with an imagination safety veto |
+
+Attacks: `odom_spoof`, `lidar_phantom`, `cmd_injection`, `sensor_replay`, `dos`, `coordinated`.
+Defenses: `none`, `crypto` (HMAC + sequence + freshness), `wm` (world-model CUSUM monitor → dead-reckoning
+rollback, LiDAR rendered from the digital-twin map, motor interlock), `full` (both).
+
+**Offline experiments** (no ROS; pre-trained models in `campussafe_twin/nav/models/`):
+
+```bash
+python run_nav_experiments.py --quick       # smoke test, 2 routes
+python run_nav_experiments.py               # full grid -> docs/results/nav/report.md, CSVs, figures
+cd ros2_ws/src/campussafe_twin && python3 -m campussafe_twin.nav.train    # retrain (~1 h CPU)
+```
+
+**In Gazebo** (after the build in section 2):
+
+```bash
+ros2 launch campussafe_twin nav_task.launch.py route:=smoke_reroute nav_policy:=ncm_wm \
+    nav_attack:=odom_spoof nav_defense:=full
+# result CSV: ~/campussafe_results/nav_*.csv
+```
+
+**Headline results** (1,120 episodes, 8 held-out routes; full discussion in [docs/RESULTS.md](docs/RESULTS.md#task-2-results-hazard-aware-navigation-under-cyberattack)):
+
+| | `classical` | `ncm` | `ncm_wm` |
+| --- | ---: | ---: | ---: |
+| Normal operation: success / time | 100 % / 30.9 s | 38 % / 29.1 s | 62 % / 64.8 s |
+| Collisions in normal operation | 0 % | 0 % | 0 % |
+
+- World model + NCM beats NCM alone (5/8 vs 3/8 routes) but does not yet match the classical teacher; the students get stuck at room doorways.
+- With the classical controller, the defenses are complementary. Crypto fixes `cmd_injection` (0 → 100 %); the world-model monitor detects every signed sensor lie with 0 false alarms and recovers phantom obstacles (25 → 96 %). Only `full` gets anything through the coordinated attack (25 %).
+- **Open problem:** with the learned controllers, the monitor false-alarms in 75–88 % of clean runs, because their abrupt commands are out of distribution for the world model. The next step is to retrain it on the students' own rollouts.
 
 ## Emergency scenarios
 
@@ -368,8 +430,11 @@ Recommended research next steps: paired policy benchmarks with the same scenario
 
 ```bash
 pip install -r requirements.txt
-python3 -m pytest ros2_ws/src/campussafe_twin/test     # learned-model tests are skipped without PyTorch
+python3 -m pytest ros2_ws/src/campussafe_twin/test     # 24 tests; learned-model tests are skipped without PyTorch
 ```
+
+`test/test_nav.py` also runs the four Task 2 ROS 2 nodes closed-loop on an in-process ROS stub
+(`test/ros_stub.py`, with the offline simulator standing in for Gazebo), so the node wiring is tested without a ROS install.
 
 ## Limitations and disclaimer
 

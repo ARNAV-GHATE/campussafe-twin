@@ -1,0 +1,20 @@
+{
+  "scan": {
+    "k": 2.0548362612724294,
+    "H": 11.39115041452645,
+    "clean_runs_over_H": 0.005,
+    "calibration_runs": 200
+  },
+  "odom": {
+    "k": 4.504236221313472,
+    "H": 41.64977048993113,
+    "clean_runs_over_H": 0.0,
+    "calibration_runs": 200
+  },
+  "cmd": {
+    "k": 6.329821729660019,
+    "H": 71.54556699371354,
+    "clean_runs_over_H": 0.0,
+    "calibration_runs": 200
+  }
+}

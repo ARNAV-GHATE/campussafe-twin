@@ -4,13 +4,16 @@ from setuptools import find_packages, setup
 
 package_name = "campussafe_twin"
 nodes = ["scenario_manager", "attack_injector", "state_builder", "decision_node", "safety_validator",
-         "robot_controller", "metrics_logger"]
+         "robot_controller", "metrics_logger",
+         # Task 2: hazard-aware navigation under attack (launch/nav_task.launch.py)
+         "nav_attack_injector", "nav_controller", "nav_motor_driver", "nav_metrics"]
 
 setup(
     name=package_name,
-    version="0.2.0",
+    version="0.3.0",
     packages=find_packages(exclude=["test"]),
-    package_data={"campussafe_twin.learning": ["models/*.pt", "models/*.json"]},
+    package_data={"campussafe_twin.learning": ["models/*.pt", "models/*.json"],
+                  "campussafe_twin.nav": ["models/*.pt", "models/*.json"]},
     include_package_data=True,
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),

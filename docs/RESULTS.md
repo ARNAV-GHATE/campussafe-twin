@@ -110,3 +110,91 @@ pip install -r requirements.txt
 python run_experiments.py                    # writes results/experiments/ (this document used --trials 5 --workers 2)
 python run_offline.py --policy wm_ncm --trials 5    # the imagination-selection ablation
 ```
+
+---
+
+# Task 2 results: hazard-aware navigation under cyberattack
+
+Full tables: [results/nav/report.md](results/nav/report.md) (raw episodes in `results/nav/raw.csv`).
+1,120 episodes over 8 held-out routes, 7 attack settings and 4 defenses. The classical baseline was run
+with 3 seeds and the learned policies with 1 seed, because `ncm_wm` costs about 16 s of CPU per episode.
+Design: [TASK2_NAVIGATION.md](TASK2_NAVIGATION.md).
+
+![normal operation](results/nav/fig_nav_normal.png)
+![under attack](results/nav/fig_nav_resilience.png)
+
+## T2.1 Normal operation
+
+| Policy | Success | Time (s) | Runs with a collision | Min clearance (m) | Decision latency |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `classical` (teacher / baseline) | 100 % | 30.9 | 0 % | 0.75 | 0.03 ms |
+| `ncm` | 38 % | 29.1 | 0 % | 1.01 | 2.7 ms |
+| `ncm_wm` (proposed) | 62 % | 64.8 | 0 % | 0.80 | 14.8 ms |
+
+- **The world model helps the learned planner.** Adding the belief and the imagination veto raises held-out
+  success from 3/8 to 5/8 routes (`long_haul`, 42 m, and `smoke_reroute`, a mid-run re-plan), with no
+  collisions. It is slower: the veto stops the robot whenever every imagined plan clips a wall, and it then
+  waits for a clear plan.
+- **Neither student matches the teacher yet.** All failures are timeouts with zero collisions. The robot
+  gets stuck at a room doorway (`room_to_main`, `lobby_to_n4`, `blocked_east` start inside or next to rooms), an
+  out-of-distribution state for an imitation learner.
+
+## T2.2 Attacks without defense
+
+Every attack except DoS drives every policy to (nearly) 0 % success. `cmd_injection` and `coordinated` cause
+a collision in 100 % of runs, and `sensor_replay` in 75–88 %. `odom_spoof` makes the robot believe it has
+arrived while it is elsewhere, which is why success is scored on the true pose.
+
+## T2.3 Defenses (classical controller: isolates the defenses from student weakness)
+
+| Attack | none | crypto | wm | full |
+| --- | ---: | ---: | ---: | ---: |
+| `odom_spoof` (signed lie) | 0 % | 0 % | 29 % (detected 100 %) | 29 % |
+| `lidar_phantom` (signed lie) | 25 % | 25 % | **96 %** (detected 100 %) | **96 %** |
+| `cmd_injection` (network) | 0 % | **100 %** | 0 % (detected → safe stop) | **100 %** |
+| `sensor_replay` (network) | 0 % | 75 % | 71 % | 75 % |
+| `dos` (network) | 96 % | 100 % | 29 % | 29 % |
+| `coordinated` | 0 % | 0 % | 0 % | **25 %** |
+| False alarms, clean runs | – | 0 % | 0 % | 0 % |
+| Runs with a collision (all attacks) | 46 % | 13 % | 15 % | 22 % |
+
+- The two layers are complementary, as in Task 1. **Crypto** stops forged commands and replay but is blind to a
+  compromised sensor that signs its lies. **The world-model monitor** detects those lies (100 % detection with
+  the new calibration, 0 % false alarms) and recovers from phantom obstacles by rendering the LiDAR from the
+  digital-twin map (25 % → 96 %). Only `full` gets any success under the coordinated attack.
+- **Detection is not recovery.** `odom_spoof` is detected within about 1 s, but dead reckoning on wheel encoders
+  alone drifts too much to thread the doorways, so only 29 % finish. A second absolute position source (e.g. LiDAR
+  scan matching against the twin map) is the obvious next step.
+- **The `wm` response hurts under DoS** (96 % → 29 %). Starved channels trip the staleness alarm, and the robot
+  falls back to slow dead reckoning, even though simply waiting for the next packet would have worked. The
+  staleness response should be less drastic.
+
+## T2.4 Defenses with the learned policies, and the main open problem
+
+With the learned policies, the monitor raises **false alarms in 75 % (`ncm`) and 88 % (`ncm_wm`) of clean
+runs**, mostly on the `cmd` channel (wheel encoders checked against the robot's own command). The alarm
+engages the motor interlock, so these runs fail. The cause was measured on 40 clean random routes driven by
+`ncm`: its commands are out of distribution for the world model.
+
+| Per-step surprise (median / 95th pct.) | classical driving | `ncm` driving |
+| --- | ---: | ---: |
+| `scan` | 0.69 / 2.09 | 1.27 / 2.43 |
+| `odom` | 0.72 / 4.78 | 3.25 / 14.19 |
+| `cmd` | 0.31 / 7.05 | 4.45 / 22.53 |
+
+The world model was trained on the teacher's smooth driving (plus exploration noise). The students make
+abrupt turn reversals that it never saw, so it predicts their wheel response poorly. Raising the thresholds per
+policy would only trade false alarms for missed attacks. The principled fix is the Dreamer recipe: **retrain or
+fine-tune the world model on the deployed policy's own rollouts** (the DAgger data already contains them), then
+recalibrate. This is the first item for the next iteration. Until then, the defense results that isolate the
+mechanisms are the classical-controller ones (T2.3).
+
+Even so, the defenses still cut collisions for `ncm_wm` from 43 % of attacked runs (none) to 12 % (crypto)
+and 2 % (wm / full). Part of that drop comes from the interlock stopping the robot, not from completing the task.
+
+## T2.5 Threats to validity
+
+- Kinematic offline simulator. The Gazebo launch runs the same code, but the offline/Gazebo gap has not been measured.
+- One seed for the learned policies (greedy plans; seeds only change sensor noise).
+- Scripted, non-adaptive attackers. The monitor thresholds were tuned with knowledge of the attack set
+  (k at the 95th percentile, chosen after the 99.5th percentile missed `odom_spoof`).

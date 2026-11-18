@@ -185,10 +185,10 @@ class NextConceptGenerator(nn.Module):
 # training
 # ======================================================================================
 
-def train_tokenizer(plans: np.ndarray, vocab: int, steps=3000, B=256, lr=1e-3, seed=0, log=print):
+def train_tokenizer(plans: np.ndarray, vocab: int, steps=3000, B=256, lr=1e-3, seed=0, log=print, **tok_kwargs):
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
-    tok = PlanTokenizer(vocab)
+    tok = PlanTokenizer(vocab, **tok_kwargs)          # tok_kwargs: L / scales (Task 2 uses 16-token plans)
     opt = torch.optim.AdamW(tok.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, steps)
     X = torch.as_tensor(plans)
@@ -239,30 +239,31 @@ def tokenizer_accuracy(tok: PlanTokenizer, X) -> dict:
 
 
 def train_generator(cond: np.ndarray, plans: np.ndarray, tok: PlanTokenizer, steps=4000, B=256, lr=5e-4,
-                    seed=0, log=print):
+                    seed=0, log=print, **gen_kwargs):
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     tok.eval()
     C = torch.as_tensor(cond, dtype=torch.float32)
     X = torch.as_tensor(plans)
-    with torch.no_grad():                                 # precompute targets with the frozen tokenizer
-        all_idx, all_in = [], []
-        for i in range(0, len(X), 4096):
-            idx, nxt = tok.codes(X[i:i + 4096])
-            all_idx.append(idx)
-            all_in.append(nxt)
+    with torch.no_grad():                                 # precompute code targets with the frozen tokenizer
+        all_idx = [tok.codes(X[i:i + 4096])[0] for i in range(0, len(X), 4096)]
         idxs = [torch.cat([a[k] for a in all_idx]) for k in range(len(tok.scales))]
-        inputs = [torch.cat([a[k] for a in all_in]) for k in range(len(tok.scales) - 1)]
+
+    def level_inputs(ix):
+        """Generator inputs (cumulative reconstruction pooled to each finer scale), computed per
+        batch from the frozen tokenizer: identical values, but no [N, sum(scales), d] array in memory."""
+        with torch.no_grad():
+            return tok.codes(X[ix])[1]
     n_val = max(256, len(X) // 20)
     perm = torch.as_tensor(rng.permutation(len(X)))
     va, tr = perm[:n_val], perm[n_val:]
-    gen = NextConceptGenerator(C.shape[1])
+    gen = NextConceptGenerator(C.shape[1], scales=tok.scales, **gen_kwargs)
     opt = torch.optim.AdamW(gen.parameters(), lr=lr, weight_decay=1e-3)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, lr, total_steps=steps, pct_start=0.05)
     t0 = time.time()
 
     def batch_loss(ix):
-        logits = gen(C[ix], [x[ix] for x in inputs])
+        logits = gen(C[ix], level_inputs(ix))
         losses = [F.cross_entropy(lg.reshape(-1, lg.shape[-1]), idxs[k][ix].reshape(-1)) for k, lg in enumerate(logits)]
         accs = [(lg.argmax(-1) == idxs[k][ix]).float().mean().item() for k, lg in enumerate(logits)]
         return sum(losses), accs

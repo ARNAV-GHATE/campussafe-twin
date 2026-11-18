@@ -17,6 +17,15 @@ T_BMS = "/campussafe/bms_feed"           # signed building-sensor feed (scenario
 T_BMS_RX = "/campussafe/bms_feed_rx"     # the same feed after the (possibly attacked) network
 T_SECURITY = "/campussafe/security"      # security events (state_builder, robot_controller)
 
+# Task 2 (hazard-aware navigation under attack); see nodes/nav_*.py
+T_NAV_ODOM = "/campussafe/nav/odom_rx"       # signed pose envelopes as the robot receives them
+T_NAV_SCAN = "/campussafe/nav/scan_rx"       # signed LiDAR envelopes as the robot receives them
+T_NAV_ONBOARD = "/campussafe/nav/onboard"    # trusted onboard sensors: wheel encoders + thermal
+T_NAV_HAZARDS = "/campussafe/nav/hazards"    # active hazards (building feed)
+T_NAV_CMD = "/campussafe/nav/cmd"            # signed velocity commands from nav_controller
+T_NAV_CMD_RX = "/campussafe/nav/cmd_rx"      # the same after the (possibly attacked) network
+T_NAV_STATUS = "/campussafe/nav/status"      # controller status (goal, alarms, estimate) for metrics
+
 
 def to_msg(data: dict) -> String:
     return String(data=json.dumps(data))
